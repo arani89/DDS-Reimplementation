@@ -1,26 +1,30 @@
 import os
+import ultralytics
+from ultralytics import YOLO
 
-video_name = 'MVI_40991' #don't add extension
-min_conf = '0.1'
-max_conf = '0.25'
+video_name = 'MVI_10' #don't add extension
+min_conf = 0.1
+max_conf = 0.25
 print(video_name)
 
 def generate_first_pass_video():
   print(video_name)
-  os.system('ffmpeg -y -i input/' + video_name +'.mp4 -pix_fmt yuv420p media/raw_files/' + video_name +'.y4m')
+  os.system('ffmpeg -y -i input/' + video_name +'.mp4 -c:v libx264 -qp 36 -r 30 -vf scale=iw*0.6:ih*0.6 -f media/first_pass_input/' + video_name +'.mp4')
+
+  model = YOLO("yolov5s.pt")
+# accepts all formats - image/dir/Path/URL/video/PIL/ndarray. 0 for webcam
+  results = model.predict(source='media/first_pass_input/' + video_name + '.mp4', stream=True, conf=0.1)
+  for result in results:
+    for box in result.boxes:
+      conf_value = box.conf.detach().item()
+      print(conf_value)
+      if (conf_value < max_conf):
+        print(str(box.xyxy) + ' ' + str(box.conf))
+    #print(str(result.boxes.conf))
 
 #change qp to 36 and resolution to 0.6
-  os.system('ffmpeg -y -i media/raw_files/' + video_name +'.y4m -c:v libx264 -qp 36 -r 30 -vf scale=iw*0.6:ih*0.6 media/first_pass_input/' + video_name + '.mp4')
-  os.system('python3 yolov5/detect.py --weights yolov5s.pt --conf ' + min_conf + '--source media/first_pass_input/' + video_name + '.mp4 --save-txt --save-conf --project results --name ' + video_name +'_first')
-
-generate_first_pass_video()
-
-
-# # DDS Second Pass
-
-# Find objects with confidence values between `min_conf` and `max_conf` from the results produced in first pass and store them in `results/{video_name}_first}/required_objects.txt`.
-
-# In[7]:
+  #os.system('ffmpeg -y -i media/raw_files/' + video_name +'.y4m -c:v libx264 -qp 36 -r 30 -vf scale=iw*0.6:ih*0.6 media/first_pass_input/' + video_name + '.mp4')
+  #os.system('python3 yolov5/detect.py --weights yolov5s.pt --conf ' + min_conf + ' --source media/first_pass_input/' + video_name + '.mp4 --save-txt --save-conf --project results --name ' + video_name +'_first > /dev/null')
 
 def find_relevant_objects_second_pass():
   labels_path = 'results/'+video_name+'_first4/labels'
@@ -30,6 +34,10 @@ def find_relevant_objects_second_pass():
 
   start = len(video_name)+1
   print(start)
+
+generate_first_pass_video()
+#find_relevant_objects_second_pass()
+
 
 def get_numeric_part(filename):
   #extract the numeric part from the filename, format is '{video_name}_num.txt'
