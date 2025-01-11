@@ -1,25 +1,78 @@
 import os
 import ultralytics
 from ultralytics import YOLO
+import cv2
+import numpy as np
 
-video_name = 'MVI_10' #don't add extension
+video_name = 'output0000' #don't add extension
 min_conf = 0.1
-max_conf = 0.25
-print(video_name)
+max_conf = 1
+# print(video_name)
 
 def generate_first_pass_video():
-  print(video_name)
-  os.system('ffmpeg -y -i input/' + video_name +'.mp4 -c:v libx264 -qp 36 -r 30 -vf scale=iw*0.6:ih*0.6 -f media/first_pass_input/' + video_name +'.mp4')
+  # print(video_name)
+  #os.system('ffmpeg -y -i input/' + video_name +'.mp4 -c:v libx264 -qp 36 -r 30 -vf scale=iw*0.6:ih*0.6 -f media/first_pass_input/' + video_name +'.mp4')
 
   model = YOLO("yolov5s.pt")
 # accepts all formats - image/dir/Path/URL/video/PIL/ndarray. 0 for webcam
-  results = model.predict(source='media/first_pass_input/' + video_name + '.mp4', stream=True, conf=0.1)
-  for result in results:
-    for box in result.boxes:
-      conf_value = box.conf.detach().item()
-      print(conf_value)
-      if (conf_value < max_conf):
-        print(str(box.xyxy) + ' ' + str(box.conf))
+  cap = cv2.VideoCapture('media/first_pass_input/segmented_0.5/AITr1cam10_segmented/' + video_name + '.mp4')
+  if not os.path.exists(f'media/first_pass_input/segmented_0.5/AITr1cam10_segmented/{video_name}.mp4'):
+    print(f"Error: Video file not found at 'media/first_pass_input/segmented_0.5/AITr1cam10_segmented/{video_name}.mp4'")
+    return
+
+  # cap = cv2.VideoCapture('' + video_name + '.mp4')
+  frame_num = 0
+  while cap.isOpened():
+    success, frame = cap.read()
+    # print(cap)
+    if not success:
+      print('Failed read')
+      break
+    results = model(frame, conf=min_conf, classes=[0, 1, 2, 3, 5, 7, 9])
+    #print(model.names)
+    frame_np = np.array(frame)
+    # cv2.imshow("frame", frame_np)
+    # cv2.waitKey(15)
+    # cv2.destroyAllWindows()
+    # print(frame_np)
+    b_mask = np.zeros(frame_np.shape[:2], np.uint8)
+    # print(b_mask)
+    # dark_mask = np.array(frame_np.shape)
+    for ci, c in enumerate(results):
+          for bi, b in enumerate(c.boxes):
+            print(b)
+            if b.conf.numpy()[0] > max_conf:
+              continue
+            cur_box = np.round(b.xyxy.numpy()[0]).astype(np.uint16)
+            
+            x_min = cur_box[0]
+            y_min = cur_box[1]
+            x_max = cur_box[2]
+            y_max = cur_box[3]
+            b_mask[y_min:y_max,x_min:x_max] = 1
+    
+    b_mask = np.repeat(b_mask[:, :, np.newaxis], 3, axis=2)
+    masked_image = np.multiply(frame_np, b_mask)
+    cropped_image_name = "cropped" + str(frame_num) + ".png"
+    cv2.imwrite(cropped_image_name, masked_image)
+    frame_num += 1
+          # print(c)
+          # cropped_image = cap.crop(x_min, y_min, x_max, y_max)
+          # cropped_image.save(f'{video_name} + _ + {}')
+
+          #contour = c.masks.xy.pop()
+          #contour = contour.astype(np.int32)
+          #contour = contour.reshape(-1, 1, 2)
+    #     print(contour)
+        
+    #     #boxes_dim = c.boxes.xywh.numpy()
+    #     #print(boxes_dim)
+    #     #for object in len(boxes_dim):
+
+        
+       
+          
+        #print(str(box.xyxy) + ' ' + str(box.conf))
     #print(str(result.boxes.conf))
 
 #change qp to 36 and resolution to 0.6
@@ -100,8 +153,8 @@ def process_frames():
     abs_coords = normalized_to_absolute(*coordinates, img_width, img_height)
     #crop the image
     cropped_image = image.crop(abs_coords)
-    print("-------------------------------")
-    print(cropped_image)
+    # print("-------------------------------")
+    # print(cropped_image)
     #save the cropped image
     cropped_image.save(cropped_image_path)
     #return the top-left coordinates of the cropped image
@@ -158,7 +211,7 @@ def process_frames():
 
   #clear all videos and images generated to produce results
   os.system('rm -rf media/raw_files/{video_name}.y4m')
-  os.system('rm -rf media/first_pass_input/{video_name}.mp4')
+  os.system('rm -rf media/first_pass_input/segmented_0.5/AITr1cam10_segmented/{video_name}.mp4')
   os.system('rm -rf media/raw_frames/{video_name}')
   os.system('rm -rf media/frame_crops/{video_name}')
   os.system('rm -rf media/processed_frames/{video_name}')
